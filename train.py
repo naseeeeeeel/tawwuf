@@ -15,6 +15,7 @@ import ctypes.util
 import json
 import os
 import random
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
@@ -87,10 +88,19 @@ def _link_split(
     image_dir.mkdir(parents=True, exist_ok=True)
     label_dir.mkdir(parents=True, exist_ok=True)
     for image in images:
-        (image_dir / image.name).symlink_to(image.resolve())
-        (label_dir / f"{image.stem}.txt").symlink_to(
-            (source_label_dir / f"{image.stem}.txt").resolve()
-        )
+        for source, destination in (
+            (image, image_dir / image.name),
+            (
+                source_label_dir / f"{image.stem}.txt",
+                label_dir / f"{image.stem}.txt",
+            ),
+        ):
+            try:
+                destination.symlink_to(source.resolve())
+            except OSError as error:
+                if getattr(error, "winerror", None) != 1314:
+                    raise
+                shutil.copy2(source, destination)
 
 
 def prepare_dataset(source_root: Path, output_root: Path, seed: int) -> dict:

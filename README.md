@@ -24,11 +24,18 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
+On Windows PowerShell, start the app from the project directory with:
+
+```powershell
+.\.venv\Scripts\python.exe app.py
+```
+
 Keep this terminal window open while using the app; the command runs the local
 web server and is expected to keep running. Press `Ctrl+C` when you want to stop
 the server.
 
-Open the local URL printed by Gradio. Upload a video, enter the number of lanes
+Open the local URL printed by Gradio. The local app does not create a public
+Gradio share link. Upload a video, enter the number of lanes
 visible in the camera view, choose the road type for an illustrative speed cap,
 enter a location for current weather, and select the road-condition scenario. The app
 uses pretrained YOLOv8n from the Hugging Face Hub; the separately fine-tuned

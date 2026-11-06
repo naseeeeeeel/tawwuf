@@ -1,4 +1,6 @@
 gradio==4.44.1
+fastapi<0.116
+starlette<0.42
 huggingface_hub
 lap>=0.5.12
 pandas<3

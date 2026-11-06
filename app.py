@@ -257,7 +257,7 @@ def _estimate_visible_lane_count(frame: Any, road_mask: Any = None) -> int | Non
 
     bottom_y = height * 0.94
     candidates: list[tuple[float, float]] = []
-    for line in lines[:, 0]:
+    for line in np.asarray(lines).reshape(-1, 4):
         x1, y1, x2, y2 = (float(value) for value in line)
         delta_y = y2 - y1
         if abs(delta_y) < height * 0.04:
@@ -922,93 +922,246 @@ def search_hf_datasets(query: str) -> Any:
 def launch_app() -> None:
     import gradio as gr
 
+    css = """
+    :root {
+        color-scheme: dark;
+        --ink: #e6edf5;
+        --muted: #9aaabd;
+        --line: #28384a;
+        --paper: #0a111b;
+    }
+    .gradio-container {
+        max-width: 1440px !important;
+        padding: 28px clamp(16px, 4vw, 56px) 48px !important;
+        background:
+            radial-gradient(ellipse at 9% 0%, rgba(19,173,158,.13), transparent 34rem),
+            radial-gradient(ellipse at 90% 55%, rgba(48,91,157,.09), transparent 42rem),
+            var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .app-hero {
+        position: relative; display: flex; min-height: 270px; align-items: center;
+        justify-content: space-between; gap: 30px; overflow: hidden; margin: 0 0 22px;
+        padding: clamp(28px, 5vw, 58px); border: 1px solid rgba(255,255,255,.12);
+        border-radius: 27px;
+        background: radial-gradient(circle at 82% 18%, rgba(54,211,190,.28), transparent 17rem),
+            radial-gradient(circle at 100% 100%, rgba(67,132,245,.27), transparent 23rem),
+            linear-gradient(118deg, #10243b 0%, #142f49 56%, #154d5d 100%);
+        box-shadow: 0 20px 55px rgba(18,36,58,.15); color: white;
+    }
+    .app-hero::after {
+        position: absolute; inset: 0;
+        background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+        background-size: 38px 38px; content: ""; mask-image: linear-gradient(90deg, transparent, black);
+        pointer-events: none;
+    }
+    .hero-copy, .hero-art { position: relative; z-index: 1; }
+    .hero-copy { max-width: 700px; }
+    .hero-eyebrow {
+        display: inline-flex; align-items: center; gap: 9px; margin-bottom: 18px;
+        color: #a7eee4; font-size: 11px; font-weight: 750; letter-spacing: .16em;
+        text-transform: uppercase;
+    }
+    .hero-eyebrow::before {
+        width: 8px; height: 8px; border-radius: 50%; background: #49e0c5;
+        box-shadow: 0 0 16px rgba(73,224,197,.8); content: "";
+    }
+    .hero-copy h1 {
+        margin: 0 0 12px; color: white; font-size: clamp(36px, 5vw, 58px);
+        font-weight: 760; letter-spacing: -.055em; line-height: 1.02;
+    }
+    .hero-copy p { max-width: 610px; margin: 0; color: #c3d2e0; font-size: 15px; line-height: 1.7; }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 21px; }
+    .hero-tag {
+        padding: 7px 11px; border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+        background: rgba(255,255,255,.07); color: #e2eef5; font-size: 11px; font-weight: 600;
+    }
+    .hero-art { display: grid; width: 190px; height: 170px; flex: 0 0 190px; place-items: center; }
+    .hero-orbit {
+        display: grid; width: 140px; height: 140px; place-items: center;
+        border: 1px solid rgba(157,238,222,.37); border-radius: 50%;
+        background: radial-gradient(circle, rgba(61,205,185,.22), rgba(61,205,185,.025) 69%);
+        box-shadow: 0 0 0 18px rgba(61,205,185,.035), 0 0 0 38px rgba(61,205,185,.025);
+        transform: rotate(-12deg);
+    }
+    .hero-orbit-inner {
+        display: grid; width: 92px; height: 92px; place-items: center;
+        border: 1px solid rgba(255,255,255,.16); border-radius: 25px;
+        background: linear-gradient(145deg, rgba(255,255,255,.19), rgba(255,255,255,.045));
+        color: #9af0df; font-size: 38px; font-weight: 750; transform: rotate(12deg);
+    }
+    .safety-note {
+        margin: 0 0 22px !important; padding: 13px 17px !important;
+        border: 1px solid #59472c !important; border-radius: 14px !important;
+        background: #241e16 !important; color: #e4c990 !important; font-size: 13px;
+    }
+    .input-panel, .results-panel, .research-panel {
+        padding: clamp(17px, 2.2vw, 28px) !important; border: 1px solid var(--line) !important;
+        border-radius: 21px !important; background: rgba(17,26,38,.96) !important;
+        box-shadow: 0 14px 36px rgba(0,0,0,.20) !important;
+    }
+    .section-heading { margin: 2px 0 15px; }
+    .section-heading .step { color: #0e978b; font-size: 10px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    .section-heading .step { color: #62d7c4; }
+    .section-heading h2 { margin: 5px 0 4px; color: var(--ink); font-size: 22px; font-weight: 720; letter-spacing: -.035em; }
+    .section-heading p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .upload-video, .result-video, .trend-card {
+        overflow: hidden; border: 1px solid var(--line) !important; border-radius: 15px !important;
+        background: #0d1622 !important;
+    }
+    .input-panel label, .research-panel label { color: #d6e0ea !important; font-weight: 650 !important; }
+    .input-panel input, .input-panel textarea, .input-panel select,
+    .research-panel input, .input-panel [role="listbox"] {
+        border-color: #344356 !important; border-radius: 11px !important;
+        background-color: #111c2a !important; color: #e1eaf2 !important;
+    }
+    .input-panel .info, .research-panel .info { color: #91a1b3 !important; font-size: 11px !important; }
+    .input-panel input::placeholder, .research-panel input::placeholder { color: #738399 !important; }
+    .input-panel .wrap, .results-panel .wrap, .research-panel .wrap { color: #dce5ee; }
+    .input-panel .block, .results-panel .block, .research-panel .block {
+        border-color: #29394c !important;
+    }
+    .primary-action button {
+        min-height: 49px; border: 0 !important; border-radius: 13px !important;
+        background: linear-gradient(100deg, #11a998, #118f9e) !important;
+        box-shadow: 0 8px 18px rgba(17,169,152,.22) !important; color: white !important;
+        font-size: 14px !important; font-weight: 750 !important;
+        transition: transform .18s ease, box-shadow .18s ease !important;
+    }
+    .primary-action button:hover { box-shadow: 0 11px 24px rgba(17,169,152,.3) !important; transform: translateY(-1px); }
+    .secondary-action button {
+        min-height: 42px; border: 1px solid #d6e5e9 !important; border-radius: 11px !important;
+        border-color: #31534f !important; background: #142823 !important;
+        color: #8ce2d2 !important; font-weight: 650 !important;
+    }
+    .subtle-note { color: #92a0b0; font-size: 11px; line-height: 1.6; }
+    .speed-card {
+        min-height: 150px; padding: 21px 24px !important;
+        border: 1px solid rgba(19,173,158,.18) !important; border-radius: 18px !important;
+        background: radial-gradient(circle at 100% 0%, rgba(48,204,182,.18), transparent 15rem),
+            linear-gradient(120deg, #10283e, #163c50) !important;
+        box-shadow: 0 12px 28px rgba(18,44,64,.12) !important; color: #dce9ef !important;
+        text-align: left;
+    }
+    .speed-card h2 {
+        margin: 2px 0 4px !important; color: #77ead6 !important;
+        font-size: clamp(42px, 5vw, 58px) !important; font-weight: 780 !important;
+        letter-spacing: -.06em !important; line-height: 1 !important;
+    }
+    .speed-card p { color: #b6cbd5 !important; font-size: 12px; }
+    .condition-card {
+        padding: 14px 17px !important; border: 1px solid #e1eaf0 !important;
+        border-color: #2b3a4b !important; border-radius: 14px !important;
+        background: #111b28 !important; color: #aab8c8 !important;
+        font-size: 12px; line-height: 1.65;
+    }
+    .condition-card strong { color: #e1eaf3; }
+    .analysis-summary { color: #aab8c8; font-size: 13px; line-height: 1.8; }
+    .analysis-summary h3 { color: var(--ink); font-size: 17px; }
+    .gradio-container .tabs { gap: 8px; padding: 6px; border: 1px solid #263548; border-radius: 14px; background: rgba(14,22,33,.88); }
+    .gradio-container .tab-nav button { border-radius: 10px !important; color: #a3b1c2 !important; font-weight: 650 !important; }
+    .gradio-container .tab-nav button.selected { background: #153b39 !important; color: #8be3d3 !important; }
+    .gradio-container details { border: 1px solid #29394c !important; border-radius: 13px !important; background: #111b28 !important; color: #dce5ee; }
+    .app-footer { margin-top: 25px; padding-top: 17px; border-top: 1px solid #263548; color: #8392a4; font-size: 11px; line-height: 1.7; text-align: center; }
+    @media (max-width: 760px) {
+        .gradio-container { padding: 14px 12px 30px !important; }
+        .app-hero { min-height: auto; margin-bottom: 15px; padding: 27px 22px; border-radius: 21px; }
+        .hero-art { display: none; }
+        .hero-copy p { font-size: 14px; }
+        .input-panel, .results-panel, .research-panel { padding: 16px !important; border-radius: 17px !important; }
+    }
+    """
+
     with gr.Blocks(
         title="Tawwuf | Traffic Intelligence Demo",
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="cyan"),
-        css=(
-            ".speed-card { text-align: center; padding: 1.5rem; "
-            "border-radius: 1rem; background: linear-gradient(135deg, "
-            "#0b1f33, #145374); color: white; }"
-            ".speed-card h2 { font-size: 3.5rem; margin: .2rem; }"
-            ".safety-note { border-left: 4px solid #e6a700; "
-            "padding: .8rem 1rem; background: #fff8e6; }"
+        theme=gr.themes.Soft(
+            primary_hue="teal",
+            secondary_hue="blue",
+            neutral_hue="slate",
+            radius_size="lg",
+            spacing_size="md",
         ),
+        css=css,
     ) as demo:
-        gr.Markdown(
-            "# Tawwuf Traffic Intelligence\n"
-            "### A Hugging Face-powered research prototype for Doha traffic scenarios\n\n"
-            "Upload an authorized clip to explore vehicle and pedestrian-count "
-            "trends. Road, school, and zone inputs are manually selected "
-            "scenarios. Current weather can be fetched from Open-Meteo for an "
-            "entered location; it may not match the clip's recording time."
+        gr.HTML(
+            "<section class='app-hero'>"
+            "<div class='hero-copy'>"
+            "<h1>Tawwuf</h1>"
+            "<p>Variable speed limits to help reduce road accidents.</p>"
+            "</div>"
+            "<div class='hero-art' aria-hidden='true'><div class='hero-orbit'>"
+            "<div class='hero-orbit-inner'>T</div></div></div></section>"
         )
         gr.Markdown(
-            "<div class='safety-note'><b>Research demo only.</b> This app "
-            "does not connect to government cameras, detect accidents, or "
-            "control road signs. Its speed output is not suitable for "
-            "operational use.</div>"
+            "<div class='safety-note'>Research prototype · "
+            "Not for operational speed control.</div>"
         )
 
         with gr.Column():
             with gr.Accordion("Analyze a video", open=True):
                 with gr.Row():
-                    with gr.Column(scale=1):
+                    with gr.Column(scale=1, elem_classes=["input-panel"]):
+                        gr.HTML(
+                            "<div class='section-heading'>"
+                            "<div class='step'>01 &nbsp; / &nbsp; Start here</div>"
+                            "<h2>Bring your footage</h2>"
+                            "<p>Upload a clip or load a sample to begin exploring.</p>"
+                            "</div>"
+                        )
                         input_video = gr.Video(
-                            label="Traffic video",
+                            label="Your traffic video",
                             sources=["upload"],
                             format="mp4",
+                            elem_classes=["upload-video"],
                         )
                         sample_video = gr.Dropdown(
                             choices=list(SAMPLE_VIDEOS),
                             value="Crowd sample 03 (2.5 MB)",
-                            label="Or choose a repeatable Hugging Face sample",
-                            info=(
-                                "The selected clip downloads from the public "
-                                "dataset the first time, then uses the local cache."
-                            ),
+                            label="Or try a sample clip",
+                            info="A public sample is cached after its first download.",
                         )
-                        load_sample_button = gr.Button("Load selected sample")
+                        load_sample_button = gr.Button(
+                            "Load selected sample",
+                            elem_classes=["secondary-action"],
+                        )
                         gr.Markdown(
                             "Sample source: "
                             "[Small Crowd and Traffic Video Footages]"
                             "(https://huggingface.co/datasets/"
                             "parsafaramarzi/Small-Crowd-and-Traffic-Video-Footages) "
-                            "— MIT license declared in Hub metadata. The dataset "
-                            "card is sparse; verify source terms before reuse "
-                            "outside testing."
+                            "— MIT license declared in Hub metadata. Verify source "
+                            "terms before reuse beyond testing.",
+                            elem_classes=["subtle-note"],
+                        )
+                        gr.HTML(
+                            "<div class='section-heading' style='margin-top:22px'>"
+                            "<div class='step'>02 &nbsp; / &nbsp; Set the scene</div>"
+                            "<h2>Road context</h2>"
+                            "<p>Choose the visible lanes and closest road type.</p>"
+                            "</div>"
                         )
                         lane_count = gr.Number(
                             value=3,
                             minimum=1,
                             maximum=12,
                             precision=0,
-                            label="Number of visible road lanes",
-                            info=(
-                                "Enter the lanes in the camera view. Counts "
-                                "are divided by this value unless automatic "
-                                "estimation succeeds."
-                            ),
+                            label="Visible lanes",
+                            info="Used unless automatic estimation succeeds.",
                         )
                         road_context = gr.Dropdown(
                             choices=list(ROAD_CONTEXT_SPEED_CAPS),
                             value=DEFAULT_ROAD_CONTEXT,
-                            label="Road type (sets demo speed cap)",
-                            info=(
-                                "Lane count cannot tell the app how wide or "
-                                "fast a road is. Choose the closest road type; "
-                                "the illustrative cap is applied before traffic "
-                                "and weather adjustments. This is not a posted "
-                                "or legally validated speed limit."
-                            ),
+                            label="Road type",
+                            info="Sets the illustrative road-context cap.",
                         )
                         detect_lanes_automatically = gr.Checkbox(
-                            label="Estimate visible lane count automatically",
+                            label="Estimate lanes automatically",
                             value=False,
                             info=(
-                                "Experimental Hugging Face road/sidewalk "
-                                "segmentation plus line estimates across up to "
-                                "five points. Two estimates use the lower count; "
-                                "highly inconsistent results use the manual count."
+                                "Experimental road segmentation and line "
+                                "estimation across up to five frames."
                             ),
                         )
                         frame_stride = gr.Slider(
@@ -1016,68 +1169,73 @@ def launch_app() -> None:
                             maximum=15,
                             value=5,
                             step=1,
-                            label="Run detection every Nth frame",
-                            info=(
-                                "Default 5 analyzes about 6 frames/second in a "
-                                "30 FPS video. Boxes stay visible between "
-                                "detections; increase N for faster analysis."
-                            ),
+                            label="Detection interval (every Nth frame)",
+                            info="Higher intervals analyze faster; boxes may lag motion.",
                         )
-                        with gr.Accordion("Scenario controls (simulated)", open=True):
+                        with gr.Accordion("Fine-tune & scenario controls", open=False):
                             school_peak = gr.Checkbox(
-                                label="School arrival / dismissal scenario",
+                                label="School-peak scenario",
                                 value=False,
                             )
                             road_condition = gr.Dropdown(
                                 list(ROAD_CONDITIONS),
                                 value="Normal",
-                                label="Road condition",
-                                info=(
-                                    "Wet road, roadworks, and reduced visibility "
-                                    "lower the demo speed by one band. This is "
-                                    "a manual scenario, not video detection."
-                                ),
+                                label="Road condition scenario",
+                                info="Manually selected; this is not detected from video.",
                             )
                             weather_location = gr.Textbox(
                                 label="Location for current weather",
                                 placeholder="e.g., Doha, Qatar",
-                                info=(
-                                    "Open-Meteo looks up current conditions, "
-                                    "not weather at the video's recording time. "
-                                    "Your location is sent to Open-Meteo. "
-                                    "Rain, snow, fog, or wind ≥50 km/h lowers "
-                                    "the demo speed by one band. Leave blank "
-                                    "to skip weather adjustment."
-                                ),
+                                info="Open-Meteo current weather may not match the video's recording time.",
                             )
                             high_risk_zone = gr.Checkbox(
-                                label="Known high-risk-zone scenario",
+                                label="High-risk-zone scenario",
                                 value=False,
                             )
-                            load_sample_button.click(
+                        analyze_button = gr.Button(
+                            "Analyze video",
+                            variant="primary",
+                            elem_classes=["primary-action"],
+                        )
+                        gr.Markdown(
+                            "Only process video you are authorized to use. "
+                            "Insights are approximate and for research only.",
+                            elem_classes=["subtle-note"],
+                        )
+                    with gr.Column(scale=1, elem_classes=["results-panel"]):
+                        gr.HTML(
+                            "<div class='section-heading'>"
+                            "<div class='step'>03 &nbsp; / &nbsp; Explore insights</div>"
+                            "<h2>Your clip, in focus</h2>"
+                            "<p>Detection summaries and visual trends from this clip.</p>"
+                            "</div>"
+                        )
+                        speed_output = gr.Markdown(
+                            "## -- km/h\nDemo estimate · run an analysis to see results",
+                            elem_classes=["speed-card"],
+                        )
+                        condition_output = gr.Markdown(
+                            "**Road conditions** &nbsp;·&nbsp; Waiting for analysis\n\n"
+                            "Current weather is optional. Leave the location blank "
+                            "to skip the weather lookup.",
+                            elem_classes=["condition-card"],
+                        )
+                        output_video = gr.Video(
+                            label="Processed clip",
+                            elem_classes=["result-video"],
+                        )
+                        load_sample_button.click(
                             fn=load_sample_video,
                             inputs=sample_video,
                             outputs=input_video,
                         )
-                        analyze_button = gr.Button("Analyze clip", variant="primary")
-                    with gr.Column(scale=1):
-                        speed_output = gr.Markdown(
-                            "## -- km/h\nDemo recommendation",
-                            elem_classes=["speed-card"],
-                        )
-                        condition_output = gr.Markdown(
-                            "**Road condition scenario:** waiting for analysis\n\n"
-                            "Enter a location to get current weather from "
-                            "Open-Meteo and include adverse conditions in the "
-                            "demo speed adjustment."
-                        )
-                        output_video = gr.Video(
-                            label="Video with detections held between samples"
-                        )
                 trend_plot = gr.Plot(
-                    label="Traffic and people detected over clip time",
+                    label="Detection trends across clip time",
+                    elem_classes=["trend-card"],
                 )
-                analysis_summary = gr.Markdown()
+                analysis_summary = gr.Markdown(
+                    elem_classes=["analysis-summary"],
+                )
 
                 analyze_button.click(
                     fn=process_video,
@@ -1103,6 +1261,13 @@ def launch_app() -> None:
                 )
 
             with gr.Accordion("Explore HF datasets", open=False):
+                gr.HTML(
+                    "<div class='section-heading'>"
+                    "<div class='step'>Research tools</div>"
+                    "<h2>Find data for your next experiment</h2>"
+                    "<p>Search public datasets and review declared licensing.</p>"
+                    "</div>"
+                )
                 gr.Markdown(
                     "Search the Hugging Face dataset catalog for research "
                     "candidates. Search results are not automatically used "
@@ -1145,6 +1310,12 @@ def launch_app() -> None:
                 )
 
             with gr.Accordion("How to interpret this demo", open=False):
+                gr.HTML(
+                    "<div class='section-heading'>"
+                    "<div class='step'>Read the results responsibly</div>"
+                    "<h2>A visual research prototype, not a control system</h2>"
+                    "</div>"
+                )
                 gr.Markdown(
                     "### What the prototype measures\n"
                     "- YOLOv8 and BoT-SORT run on every Nth frame; boxes are "
@@ -1170,7 +1341,15 @@ def launch_app() -> None:
                     "none of those operational connections."
                 )
 
-    demo.launch(share=True)
+        gr.HTML(
+            "<footer class='app-footer'>"
+            "TAWWUF &nbsp;·&nbsp; TRAFFIC INTELLIGENCE RESEARCH PROTOTYPE"
+            "<br>Use only authorized video. Insights are approximate and "
+            "not intended for safety-critical or operational decisions."
+            "</footer>"
+        )
+
+    demo.launch()
 
 
 if __name__ == "__main__":
